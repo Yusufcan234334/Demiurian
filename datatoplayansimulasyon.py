@@ -1,4 +1,4 @@
-#This code is AI
+# This code is AI
 
 import pygame
 import random
@@ -23,8 +23,8 @@ GRID_ROWS = WORLD_H // GRID_SIZE
 FPS = 60
 CAMERA_SPEED = 900.0  # px/sec
 
-DAY_LENGTH_TICKS = 480          # 1 gün-gece döngüsü
-SEASON_LENGTH_TICKS = 2400      # 1 mevsim
+DAY_LENGTH_TICKS = 480  # 1 gün-gece döngüsü
+SEASON_LENGTH_TICKS = 2400  # 1 mevsim
 YEAR_LENGTH_TICKS = SEASON_LENGTH_TICKS * 4
 SEASONS = ["İlkbahar", "Yaz", "Sonbahar", "Kış"]
 SEASON_TEMP_MOD = [0.0, 0.18, -0.05, -0.30]
@@ -40,28 +40,28 @@ INITIAL_PER_SPECIES = 10
 
 SIGHT_MIN, SIGHT_MAX = 120, 420
 LEG_OPTIONS = [0, 2, 4, 6, 8]
-EYE_OPTIONS = [1, 2, 2, 2, 2, 3, 4, 6, 8]  # 2 gözlü olmak en olası
+EYE_OPTIONS = [1, 2, 2, 2, 2, 3, 4, 6, 8]
 
-EQ_WINDOW = 300          # kaç tick'lik pencereyle ölçülecek
-EQ_HISTORY_LEN = 12      # kaç pencere art arda stabil olmalı
-EQ_CV_THRESHOLD = 0.12   # varyasyon katsayısı eşiği (düşük = stabil)
+EQ_WINDOW = 300  # kaç tick'lik pencereyle ölçülecek
+EQ_HISTORY_LEN = 12  # kaç pencere art arda stabil olmalı
+EQ_CV_THRESHOLD = 0.15  # varyasyon katsayısı eşiği (pop, food ve tür sayısı için)
 
-RECORD_INTERVAL = 20     # kaç tick'te bir yeni x örnekleri alınsın
-RECORD_DELTA_TICKS = 90  # x alındıktan kaç tick sonra y (delta) hesaplansın
-SAMPLES_PER_RECORD = 14  # her seferinde kaç hücre örneklensin
+RECORD_INTERVAL = 20  # kaç tick'te bir yeni x ve y örnekleri alınsın
+SAMPLES_PER_RECORD = 14  # her seferinde kaç başarılı/olgun canlı örneklensin
 FLUSH_EVERY_SAMPLES = 200  # buffer bu kadar dolunca diske yaz
 
 SENSE_RADIUS = 260  # nearby_* hesaplarken kullanılan yarıçap (px)
 
-WORLD_STATS_RECALC_INTERVAL = 240  # average_temperature/variance gibi pahalı dünya istatistikleri kaç tick'te bir yeniden hesaplansın
-POLLUTION_PER_CREATURE = 0.0000025  # her canlı her tick ortama bu kadar kirlilik ekler
-POLLUTION_DECAY = 0.0004            # kirlilik doğal olarak bu oranda azalır
+WORLD_STATS_RECALC_INTERVAL = 240
+POLLUTION_PER_CREATURE = 0.0000025
+POLLUTION_DECAY = 0.0004
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dataset")
 X_PATH = os.path.join(OUTPUT_DIR, "x.pt")
 Y_PATH = os.path.join(OUTPUT_DIR, "y.pt")
 
 random.seed()
+
 
 # =====================================================================
 # ENUMS
@@ -71,13 +71,16 @@ class Diet(Enum):
     CARNIVORE = 1
     OMNIVORE = 2
 
+
 class ReproMode(Enum):
     SEXUAL = 0
     ASEXUAL = 1
 
+
 class BirthMode(Enum):
     MAMMAL = 0
     EGG = 1
+
 
 class Habitat(Enum):
     LAND = 0
@@ -85,6 +88,7 @@ class Habitat(Enum):
     AMPHIBIOUS = 2
     UNDERGROUND = 3
     ARBOREAL = 4
+
 
 class Terrain(Enum):
     WATER = 0
@@ -110,7 +114,6 @@ class Cell:
         self.capacity = capacity
         self.plants = 0 if is_water else random.randint(0, 2)
 
-        # --- yeni dünya öznitelikleri ---
         if is_water:
             self.terrain = Terrain.WATER
         elif base_humid > 0.6:
@@ -125,7 +128,7 @@ class Cell:
         self.depth = clamp01(0.3 + random.uniform(0, 0.7)) if is_water else 0.0
         self.oxygen = clamp01(0.55 + base_humid * 0.25 - (self.depth * 0.15 if is_water else 0.0))
         self.pollution = 0.0
-        self.resource_regen_rate = clamp01(capacity)  # step() içinde mevsime göre güncellenir
+        self.resource_regen_rate = clamp01(capacity)
 
 
 def clamp01(v):
@@ -134,7 +137,6 @@ def clamp01(v):
 
 def build_grid():
     grid = [[None] * GRID_COLS for _ in range(GRID_ROWS)]
-    # basit göl(ler) tanımı
     lake_centers = [
         (GRID_COLS * 0.72, GRID_ROWS * 0.28, 6.5, 4.5),
         (GRID_COLS * 0.22, GRID_ROWS * 0.75, 4.0, 3.0),
@@ -162,8 +164,6 @@ class World:
     def __init__(self):
         self.grid = build_grid()
         self.tick = 0
-
-        # --- dünya-geneli istatistikler (pahalı olduğu için periyodik hesaplanır) ---
         self.average_temperature = 0.5
         self.temperature_variance = 0.0
         self.average_pollution = 0.0
@@ -191,7 +191,6 @@ class World:
         return clamp01(cell.base_humid + SEASON_HUMID_MOD[self.season_index()])
 
     def water_temperature_at(self, c, r):
-        # su, havadan daha yavaş ısınır/soğur -> mevsim etkisini yumuşat, derinlikle soğut
         cell = self.grid[r][c]
         base = clamp01(cell.base_temp + SEASON_TEMP_MOD[self.season_index()] * 0.4)
         return clamp01(base - cell.depth * 0.2)
@@ -205,7 +204,6 @@ class World:
                 cell = row[c]
                 if cell.is_water:
                     continue
-                # kirlilik büyümeyi yavaşlatır, oksijen/nem destekler
                 regen = clamp01(cell.capacity * growth_mod * (1.0 - cell.pollution * 0.6))
                 cell.resource_regen_rate = regen
                 cap = int(cell.capacity * MAX_PLANTS_PER_CELL)
@@ -215,7 +213,6 @@ class World:
                         cell.plants += 1
 
     def update_pollution(self, population):
-        # popülasyon dünyayı kirletir, doğa zamanla toparlar
         add = population * POLLUTION_PER_CREATURE
         for row in self.grid:
             for cell in row:
@@ -240,7 +237,7 @@ class World:
 # GENOME
 # =====================================================================
 _next_species_id = [0]
-_species_base_sound = {}  # species_id -> base_pitch (türün "imza" sesi)
+_species_base_sound = {}
 
 
 def new_species_id():
@@ -255,16 +252,13 @@ def base_sound_for(species_id):
 
 
 def make_eye_positions(count):
-    """Gövde merkezine göre (açı_derece, gövde_yarıçapına_oran) listesi üretir."""
     positions = []
     if count <= 2:
-        # çift gözler öne bakar
         spread = 25
         base_angles = [-spread, spread][:count] if count == 2 else [0]
         for a in base_angles:
             positions.append((a + random.uniform(-4, 4), random.uniform(0.55, 0.85)))
     else:
-        # çoklu göz: gövde etrafına dağıt
         for i in range(count):
             angle = (360 / count) * i + random.uniform(-8, 8)
             positions.append((angle, random.uniform(0.5, 0.9)))
@@ -272,7 +266,6 @@ def make_eye_positions(count):
 
 
 def make_leg_positions(count):
-    """Gövde merkezine göre bacakların açısal konumları (derece)."""
     if count == 0:
         return []
     positions = []
@@ -284,7 +277,6 @@ def make_leg_positions(count):
 
 @dataclass
 class Genome:
-    # --- temel ---
     legs: int
     sight_range: float
     repro_rate: float
@@ -297,7 +289,6 @@ class Genome:
     color: tuple
     habitat: Habitat
 
-    # --- fiziksel ---
     weight: float = 1.0
     strength: float = 0.5
     hearing_range: float = 200.0
@@ -311,12 +302,10 @@ class Genome:
     defense: float = 0.4
     energy_consumption_mult: float = 1.0
 
-    # --- göz / bacak konumları (gövdeye göre) ---
     eye_count: int = 2
-    eye_positions: list = field(default_factory=list)   # [(açı, yarıçap_oranı), ...]
-    leg_positions: list = field(default_factory=list)   # [açı, ...]
+    eye_positions: list = field(default_factory=list)
+    leg_positions: list = field(default_factory=list)
 
-    # --- davranış ---
     aggression: float = 0.4
     curiosity: float = 0.4
     sociality: float = 0.4
@@ -327,13 +316,11 @@ class Genome:
     learning_ability: float = 0.4
     problem_solving: float = 0.4
 
-    # --- üreme ---
     maturity_age: float = 200.0
     offspring_count: int = 1
     parental_care: float = 0.3
     mutation_rate: float = 0.06
 
-    # --- ses ---
     pitch: float = 400.0
     volume: float = 0.5
     frequency: float = 400.0
@@ -343,17 +330,40 @@ class Genome:
     social_calling: float = 0.3
     voice_mutation: float = 0.05
 
-    @property
-    def aquatic(self):
-        # geriye dönük uyumluluk: sadece tam sucul canlılar True döner
-        return self.habitat == Habitat.WATER
+    def to_y_vector(self):
+        """
+        Tanrı AI modelinin tahmin etmesi hedeflenen, 'Başarılı Genom' Y-Vektörü.
+        Çevre koşullarına (X) karşılık bu tasarım özellikleri hedefleniyor.
+        """
+        aquatic = 1.0 if self.habitat in (Habitat.WATER, Habitat.AMPHIBIOUS) else 0.0
+        diet_h = 1.0 if self.diet == Diet.HERBIVORE else 0.0
+        diet_c = 1.0 if self.diet == Diet.CARNIVORE else 0.0
+        diet_o = 1.0 if self.diet == Diet.OMNIVORE else 0.0
+
+        # Normaleştirilmiş nicel veriler (yaklaşık max değerlere bölünür ki 0-1 arası kalsın)
+        legs_norm = self.legs / 8.0
+        size_norm = clamp01(self.size / 2.5)
+        speed_norm = clamp01(self.speed() / 150.0)
+        vision_norm = clamp01(self.sight_range / SIGHT_MAX)
+        intel = self.intelligence
+        strength = self.strength
+        armor = self.armor
+        camo = self.camouflage
+        aggr = self.aggression
+
+        # Bu liste makine öğrenmesi Y etiketimizdir.
+        return [
+            aquatic, diet_h, diet_c, diet_o,
+            legs_norm, size_norm, speed_norm, vision_norm,
+            intel, strength, armor, camo, aggr
+        ]
 
     def can_occupy(self, cell):
         if self.habitat == Habitat.WATER:
             return cell.is_water
         if self.habitat == Habitat.AMPHIBIOUS:
             return True
-        return not cell.is_water  # LAND, UNDERGROUND, ARBOREAL -> karada
+        return not cell.is_water
 
     def speed(self):
         base = 40 + self.legs * 9
@@ -374,8 +384,7 @@ class Genome:
         def jitter(v, amt):
             return v + random.uniform(-amt, amt)
 
-        m = self.mutation_rate  # bireyin mutasyon oranı, ne kadar "değişken" olduğunu belirler
-
+        m = self.mutation_rate
         new_habitat = self.habitat
         if random.random() < 0.02:
             new_habitat = random.choice(list(Habitat))
@@ -395,7 +404,6 @@ class Genome:
             species_id=new_species_id() if new_species else self.species_id,
             color=self.color,
             habitat=new_habitat,
-
             weight=max(0.1, jitter(self.weight, 0.1)),
             strength=clamp01(jitter(self.strength, 0.05)),
             hearing_range=max(50, jitter(self.hearing_range, 15)),
@@ -408,11 +416,9 @@ class Genome:
             attack_power=clamp01(jitter(self.attack_power, 0.05)),
             defense=clamp01(jitter(self.defense, 0.05)),
             energy_consumption_mult=max(0.5, jitter(self.energy_consumption_mult, 0.05)),
-
             eye_count=new_eyes,
             eye_positions=make_eye_positions(new_eyes),
             leg_positions=make_leg_positions(new_legs),
-
             aggression=clamp01(jitter(self.aggression, 0.05)),
             curiosity=clamp01(jitter(self.curiosity, 0.05)),
             sociality=clamp01(jitter(self.sociality, 0.05)),
@@ -422,12 +428,10 @@ class Genome:
             memory=clamp01(jitter(self.memory, 0.05)),
             learning_ability=clamp01(jitter(self.learning_ability, 0.05)),
             problem_solving=clamp01(jitter(self.problem_solving, 0.05)),
-
             maturity_age=max(30, jitter(self.maturity_age, 20)),
             offspring_count=max(1, min(12, self.offspring_count + random.choice([-1, 0, 0, 0, 1]))),
             parental_care=clamp01(jitter(self.parental_care, 0.05)),
             mutation_rate=clamp01(jitter(self.mutation_rate, 0.02)),
-
             pitch=max(40, jitter(self.pitch, 20 * (0.3 + self.voice_mutation))),
             volume=clamp01(jitter(self.volume, 0.05)),
             frequency=max(40, jitter(self.frequency, 20)),
@@ -451,58 +455,29 @@ class Genome:
         base_pitch = base_sound_for(sid)
         size = random.uniform(0.5, 1.8)
         return Genome(
-            legs=legs,
-            sight_range=random.uniform(SIGHT_MIN, SIGHT_MAX),
-            repro_rate=random.uniform(0.2, 0.9),
-            repro_mode=random.choice(list(ReproMode)),
-            birth_mode=random.choice(list(BirthMode)),
-            intelligence=random.uniform(0.1, 0.95),
-            diet=diet,
-            size=size,
-            species_id=sid,
-            color=color,
-            habitat=habitat,
-
-            weight=size * random.uniform(0.7, 1.4),
-            strength=random.uniform(0.2, 0.9),
-            hearing_range=random.uniform(100, 350),
-            smell_range=random.uniform(80, 300),
+            legs=legs, sight_range=random.uniform(SIGHT_MIN, SIGHT_MAX),
+            repro_rate=random.uniform(0.2, 0.9), repro_mode=random.choice(list(ReproMode)),
+            birth_mode=random.choice(list(BirthMode)), intelligence=random.uniform(0.1, 0.95),
+            diet=diet, size=size, species_id=sid, color=color, habitat=habitat,
+            weight=size * random.uniform(0.7, 1.4), strength=random.uniform(0.2, 0.9),
+            hearing_range=random.uniform(100, 350), smell_range=random.uniform(80, 300),
             swim_ability=random.uniform(0.6, 1.0) if aquatic else random.uniform(0.0, 0.4),
             fly_ability=random.uniform(0.0, 0.15) if random.random() < 0.08 else 0.0,
-            armor=random.uniform(0.0, 0.6),
-            camouflage=random.uniform(0.1, 0.7),
+            armor=random.uniform(0.0, 0.6), camouflage=random.uniform(0.1, 0.7),
             poison=random.uniform(0.0, 0.4) if random.random() < 0.15 else 0.0,
-            attack_power=random.uniform(0.1, 0.9),
-            defense=random.uniform(0.1, 0.9),
-            energy_consumption_mult=random.uniform(0.8, 1.3),
-
-            eye_count=eyes,
-            eye_positions=make_eye_positions(eyes),
-            leg_positions=make_leg_positions(legs),
-
-            aggression=random.uniform(0.1, 0.9),
-            curiosity=random.uniform(0.1, 0.9),
-            sociality=random.uniform(0.1, 0.9),
-            fear=random.uniform(0.1, 0.9),
-            territoriality=random.uniform(0.0, 0.8),
-            exploration=random.uniform(0.1, 0.9),
-            memory=random.uniform(0.1, 0.9),
-            learning_ability=random.uniform(0.1, 0.9),
-            problem_solving=random.uniform(0.1, 0.9),
-
-            maturity_age=random.uniform(80, 400),
-            offspring_count=random.choice([1, 1, 2, 2, 3, 4]),
-            parental_care=random.uniform(0.0, 0.8),
-            mutation_rate=random.uniform(0.02, 0.15),
-
-            pitch=base_pitch,
-            volume=random.uniform(0.2, 0.9),
-            frequency=base_pitch * random.uniform(0.8, 1.2),
-            complexity=random.uniform(0.1, 0.8),
-            call_frequency=random.uniform(0.05, 0.6),
-            communication_range=random.uniform(150, 500),
-            social_calling=random.uniform(0.0, 0.8),
-            voice_mutation=random.uniform(0.02, 0.2),
+            attack_power=random.uniform(0.1, 0.9), defense=random.uniform(0.1, 0.9),
+            energy_consumption_mult=random.uniform(0.8, 1.3), eye_count=eyes,
+            eye_positions=make_eye_positions(eyes), leg_positions=make_leg_positions(legs),
+            aggression=random.uniform(0.1, 0.9), curiosity=random.uniform(0.1, 0.9),
+            sociality=random.uniform(0.1, 0.9), fear=random.uniform(0.1, 0.9),
+            territoriality=random.uniform(0.0, 0.8), exploration=random.uniform(0.1, 0.9),
+            memory=random.uniform(0.1, 0.9), learning_ability=random.uniform(0.1, 0.9),
+            problem_solving=random.uniform(0.1, 0.9), maturity_age=random.uniform(80, 400),
+            offspring_count=random.choice([1, 1, 2, 2, 3, 4]), parental_care=random.uniform(0.0, 0.8),
+            mutation_rate=random.uniform(0.02, 0.15), pitch=base_pitch, volume=random.uniform(0.2, 0.9),
+            frequency=base_pitch * random.uniform(0.8, 1.2), complexity=random.uniform(0.1, 0.8),
+            call_frequency=random.uniform(0.05, 0.6), communication_range=random.uniform(150, 500),
+            social_calling=random.uniform(0.0, 0.8), voice_mutation=random.uniform(0.02, 0.2),
         )
 
     @staticmethod
@@ -512,55 +487,29 @@ class Genome:
         legs = pick(a.legs, b.legs)
         eyes = pick(a.eye_count, b.eye_count)
         g = Genome(
-            legs=legs,
-            sight_range=avg(a.sight_range, b.sight_range),
-            repro_rate=avg(a.repro_rate, b.repro_rate),
-            repro_mode=pick(a.repro_mode, b.repro_mode),
-            birth_mode=pick(a.birth_mode, b.birth_mode),
-            intelligence=avg(a.intelligence, b.intelligence),
-            diet=pick(a.diet, b.diet),
-            size=avg(a.size, b.size),
-            species_id=a.species_id,
-            color=pick(a.color, b.color),
-            habitat=pick(a.habitat, b.habitat),
-
-            weight=avg(a.weight, b.weight),
-            strength=avg(a.strength, b.strength),
-            hearing_range=avg(a.hearing_range, b.hearing_range),
-            smell_range=avg(a.smell_range, b.smell_range),
-            swim_ability=avg(a.swim_ability, b.swim_ability),
-            fly_ability=avg(a.fly_ability, b.fly_ability),
-            armor=avg(a.armor, b.armor),
-            camouflage=avg(a.camouflage, b.camouflage),
-            poison=avg(a.poison, b.poison),
-            attack_power=avg(a.attack_power, b.attack_power),
+            legs=legs, sight_range=avg(a.sight_range, b.sight_range),
+            repro_rate=avg(a.repro_rate, b.repro_rate), repro_mode=pick(a.repro_mode, b.repro_mode),
+            birth_mode=pick(a.birth_mode, b.birth_mode), intelligence=avg(a.intelligence, b.intelligence),
+            diet=pick(a.diet, b.diet), size=avg(a.size, b.size), species_id=a.species_id,
+            color=pick(a.color, b.color), habitat=pick(a.habitat, b.habitat),
+            weight=avg(a.weight, b.weight), strength=avg(a.strength, b.strength),
+            hearing_range=avg(a.hearing_range, b.hearing_range), smell_range=avg(a.smell_range, b.smell_range),
+            swim_ability=avg(a.swim_ability, b.swim_ability), fly_ability=avg(a.fly_ability, b.fly_ability),
+            armor=avg(a.armor, b.armor), camouflage=avg(a.camouflage, b.camouflage),
+            poison=avg(a.poison, b.poison), attack_power=avg(a.attack_power, b.attack_power),
             defense=avg(a.defense, b.defense),
             energy_consumption_mult=avg(a.energy_consumption_mult, b.energy_consumption_mult),
-
-            eye_count=eyes,
-            eye_positions=make_eye_positions(eyes),
-            leg_positions=make_leg_positions(legs),
-
-            aggression=avg(a.aggression, b.aggression),
-            curiosity=avg(a.curiosity, b.curiosity),
-            sociality=avg(a.sociality, b.sociality),
-            fear=avg(a.fear, b.fear),
-            territoriality=avg(a.territoriality, b.territoriality),
-            exploration=avg(a.exploration, b.exploration),
-            memory=avg(a.memory, b.memory),
-            learning_ability=avg(a.learning_ability, b.learning_ability),
-            problem_solving=avg(a.problem_solving, b.problem_solving),
-
-            maturity_age=avg(a.maturity_age, b.maturity_age),
+            eye_count=eyes, eye_positions=make_eye_positions(eyes), leg_positions=make_leg_positions(legs),
+            aggression=avg(a.aggression, b.aggression), curiosity=avg(a.curiosity, b.curiosity),
+            sociality=avg(a.sociality, b.sociality), fear=avg(a.fear, b.fear),
+            territoriality=avg(a.territoriality, b.territoriality), exploration=avg(a.exploration, b.exploration),
+            memory=avg(a.memory, b.memory), learning_ability=avg(a.learning_ability, b.learning_ability),
+            problem_solving=avg(a.problem_solving, b.problem_solving), maturity_age=avg(a.maturity_age, b.maturity_age),
             offspring_count=pick(a.offspring_count, b.offspring_count),
             parental_care=avg(a.parental_care, b.parental_care),
-            mutation_rate=avg(a.mutation_rate, b.mutation_rate),
-
-            pitch=avg(a.pitch, b.pitch),
-            volume=avg(a.volume, b.volume),
-            frequency=avg(a.frequency, b.frequency),
-            complexity=avg(a.complexity, b.complexity),
-            call_frequency=avg(a.call_frequency, b.call_frequency),
+            mutation_rate=avg(a.mutation_rate, b.mutation_rate), pitch=avg(a.pitch, b.pitch),
+            volume=avg(a.volume, b.volume), frequency=avg(a.frequency, b.frequency),
+            complexity=avg(a.complexity, b.complexity), call_frequency=avg(a.call_frequency, b.call_frequency),
             communication_range=avg(a.communication_range, b.communication_range),
             social_calling=avg(a.social_calling, b.social_calling),
             voice_mutation=avg(a.voice_mutation, b.voice_mutation),
@@ -569,7 +518,7 @@ class Genome:
 
 
 # =====================================================================
-# CREATURES / EGGS
+# CREATURES / EGGS / SPATIAL HASH
 # =====================================================================
 class Egg:
     __slots__ = ("x", "y", "genome", "incubation", "max_incubation")
@@ -605,9 +554,6 @@ class Creature:
         return self.age >= self.genome.maturity_age
 
 
-# =====================================================================
-# SPATIAL HASH (komşu bulmayı hızlandırmak için)
-# =====================================================================
 class SpatialHash:
     def __init__(self, cell_size):
         self.cell_size = cell_size
@@ -642,18 +588,19 @@ class Simulation:
         self.eggs = []
         self.spawn_initial_population()
 
+        # Equilibrium takibi (Popülasyon, Bitkiler ve AKTİF TÜR SAYISI)
         self.pop_history = deque(maxlen=EQ_WINDOW)
         self.food_history = deque(maxlen=EQ_WINDOW)
+        self.species_history = deque(maxlen=EQ_WINDOW)
+
         self.stable_windows = 0
         self.is_stable = False
         self.tick_since_last_check = 0
 
-        self.pending_samples = []   # (fire_tick, x_vec, snapshot(food,pop,pred), wx, wy)
         self.x_buffer = []
         self.y_buffer = []
         self.total_saved = 0
 
-    # ---------------- spawning ----------------
     def spawn_initial_population(self):
         for _ in range(INITIAL_SPECIES):
             template = Genome.random_new()
@@ -671,7 +618,6 @@ class Simulation:
                 return x, y
         return random.uniform(0, WORLD_W - 1), random.uniform(0, WORLD_H - 1)
 
-    # ---------------- main tick ----------------
     def step(self):
         w = self.world
         w.tick += 1
@@ -698,7 +644,6 @@ class Simulation:
         self.update_dataset_recording()
         self.update_available_niches()
 
-    # ---------------- creature AI (basit, kural tabanlı) ----------------
     def update_creature(self, cr: Creature, spatial: SpatialHash):
         g = cr.genome
         cr.age += 1
@@ -709,7 +654,6 @@ class Simulation:
             cr.alive = False
             return
 
-        # görüş + işitme + koku ile fark edilebilecek en geniş yarıçap
         detect_radius = max(g.sight_range, g.hearing_range * 0.6, g.smell_range * 0.5)
         nearby = spatial.query_radius(cr.x, cr.y, detect_radius)
         predators, prey, mates, food_dir = [], [], [], None
@@ -721,17 +665,15 @@ class Simulation:
             if d > detect_radius:
                 continue
             is_predator_of_me = (
-                other.genome.diet in (Diet.CARNIVORE, Diet.OMNIVORE)
-                and other.genome.size > g.size * 1.15
-                and g.diet != Diet.CARNIVORE
+                    other.genome.diet in (Diet.CARNIVORE, Diet.OMNIVORE)
+                    and other.genome.size > g.size * 1.15
+                    and g.diet != Diet.CARNIVORE
             )
-            # korku ne kadar yüksekse, tehdidi o kadar erken (uzaktan) fark eder
             is_my_prey = (
-                g.diet in (Diet.CARNIVORE, Diet.OMNIVORE)
-                and other.genome.size < g.size * 0.9
-                and other.genome.species_id != g.species_id
-                # saldırganlık düşükse bazen avlanmaktan vazgeçer
-                and (g.aggression > 0.15 or random.random() < 0.3)
+                    g.diet in (Diet.CARNIVORE, Diet.OMNIVORE)
+                    and other.genome.size < g.size * 0.9
+                    and other.genome.species_id != g.species_id
+                    and (g.aggression > 0.15 or random.random() < 0.3)
             )
             if is_predator_of_me:
                 predators.append((other, d))
@@ -743,8 +685,6 @@ class Simulation:
         cell, cc, cr_row = self.world.cell_at(cr.x, cr.y)
         target_dx, target_dy = 0.0, 0.0
         speed = g.speed()
-
-        # korku katsayısı kaçma mesafesini büyütür (ürkek hayvanlar daha uzaktan kaçmaya başlar)
         flee_trigger = g.sight_range * (0.4 + g.fear * 0.6)
 
         if predators and min(d for _, d in predators) < flee_trigger:
@@ -767,14 +707,12 @@ class Simulation:
                 target_dx, target_dy = target.x - cr.x, target.y - cr.y
                 cr.state = "hunt"
                 if dist < 14:
-                    # saldırı gücü/problem çözme vs hedefin savunması+zırhı -> başarı ihtimali
                     attack_score = g.attack_power + g.problem_solving * 0.3
                     defense_score = target.genome.defense + target.genome.armor * 0.5 + target.genome.camouflage * 0.2
                     success_chance = clamp01(0.5 + (attack_score - defense_score) * 0.6)
                     if random.random() < success_chance:
                         target.alive = False
                         cr.energy = min(g.max_energy(), cr.energy + target.genome.size * 55)
-                        # zehirli avın son bir "intikamı": avcıya hasar
                         if target.genome.poison > 0:
                             cr.energy -= target.genome.poison * 40
             elif g.diet in (Diet.HERBIVORE, Diet.OMNIVORE):
@@ -799,7 +737,6 @@ class Simulation:
                 self.reproduce_asexual(cr)
                 cr.repro_cooldown = 260 * (1.4 - g.repro_rate)
             else:
-                # sosyallik yüksekse eş arama yarıçapı biraz genişler
                 mate_radius_bonus = 1.0 + g.sociality * 0.4
                 if mates and mates[0][1] <= g.communication_range * mate_radius_bonus:
                     mates.sort(key=lambda t: t[1])
@@ -813,7 +750,6 @@ class Simulation:
                 else:
                     target_dx, target_dy = random.uniform(-1, 1), random.uniform(-1, 1)
         else:
-            # merak/keşif ne kadar yüksekse yön o kadar sık değişir
             change_prob = 0.02 + g.curiosity * 0.05 + g.exploration * 0.03
             if random.random() < change_prob:
                 cr.vx = random.uniform(-1, 1)
@@ -824,7 +760,6 @@ class Simulation:
         if cr.repro_cooldown > 0:
             cr.repro_cooldown -= 1
 
-        # zeka düşükse hareket daha rastgele (kararı bazen görmezden gelir)
         if random.random() > g.intelligence and cr.state not in ("flee",):
             target_dx += random.uniform(-1, 1)
             target_dy += random.uniform(-1, 1)
@@ -878,7 +813,6 @@ class Simulation:
                             best_d, best = d, (px, py)
         return best if best else (None, None)
 
-    # ---------------- reproduction ----------------
     def reproduce_asexual(self, cr: Creature):
         if len(self.creatures) + len(self.eggs) >= MAX_CREATURES:
             return
@@ -916,7 +850,6 @@ class Simulation:
             eaten = False
             for cr in self.creatures:
                 if cr.alive and cr.genome.diet in (Diet.CARNIVORE, Diet.OMNIVORE):
-                    # ebeveyn bakımı yüksekse yumurta bir miktar korunur (yenme ihtimali düşer)
                     protect = clamp01(egg.genome.parental_care) * 0.5
                     if math.hypot(cr.x - egg.x, cr.y - egg.y) < 12 and random.random() > protect:
                         cr.energy = min(cr.genome.max_energy(), cr.energy + 20)
@@ -931,34 +864,41 @@ class Simulation:
                 remaining.append(egg)
         self.eggs = remaining
 
-    # ---------------- equilibrium detection ----------------
     def update_equilibrium(self):
         total_food = sum(cell.plants for row in self.world.grid for cell in row)
+        # Aktif yaşayan farklı türlerin sayısı
+        active_species = len(set(cr.genome.species_id for cr in self.creatures if cr.alive))
+
         self.pop_history.append(len(self.creatures))
         self.food_history.append(total_food)
+        self.species_history.append(active_species)
         self.tick_since_last_check += 1
 
         if self.tick_since_last_check >= EQ_WINDOW and len(self.pop_history) == EQ_WINDOW:
             self.tick_since_last_check = 0
-            pop_mean = sum(self.pop_history) / EQ_WINDOW
-            food_mean = sum(self.food_history) / EQ_WINDOW
-            pop_std = (sum((p - pop_mean) ** 2 for p in self.pop_history) / EQ_WINDOW) ** 0.5
-            food_std = (sum((f - food_mean) ** 2 for f in self.food_history) / EQ_WINDOW) ** 0.5
-            pop_cv = pop_std / pop_mean if pop_mean > 1 else 1.0
-            food_cv = food_std / food_mean if food_mean > 1 else 1.0
 
-            if pop_mean > 5 and pop_cv < EQ_CV_THRESHOLD and food_cv < EQ_CV_THRESHOLD:
+            def get_cv(history_deque):
+                mean = sum(history_deque) / len(history_deque)
+                if mean <= 0: return mean, 0.0
+                std = (sum((v - mean) ** 2 for v in history_deque) / len(history_deque)) ** 0.5
+                return mean, std / mean
+
+            pop_mean, pop_cv = get_cv(self.pop_history)
+            food_mean, food_cv = get_cv(self.food_history)
+            species_mean, species_cv = get_cv(self.species_history)
+
+            # Dengeli kabul edilmesi için üç metriğin de değişimi (varyasyon katsayısı) eşiğin altında olmalı
+            if (pop_mean > 5 and pop_cv < EQ_CV_THRESHOLD and
+                    food_cv < EQ_CV_THRESHOLD and species_cv < EQ_CV_THRESHOLD):
                 self.stable_windows += 1
             else:
                 self.stable_windows = 0
+                self.is_stable = False  # Koşullar bozulduğunda stabiliteyi iptal et
 
             if self.stable_windows >= EQ_HISTORY_LEN:
                 self.is_stable = True
 
-    # ---------------- niche / dataset recording ----------------
     def update_available_niches(self):
-        # kaba bir "boş ekolojik alan" tahmini: tür/diyet/habitat kombinasyonu ne kadar az kullanılıyorsa
-        # o kadar fazla boş niş var demektir.
         if not self.creatures:
             self.world.available_niches = 1.0
             return
@@ -992,6 +932,7 @@ class Simulation:
         return food, pop, pred
 
     def build_x_vector(self, wx, wy):
+        """Çevre ve koşul verilerini temsil eden X Vektörü."""
         cell, c, r = self.world.cell_at(wx, wy)
         temperature = self.world.temperature_at(c, r)
         humidity = self.world.humidity_at(c, r)
@@ -1009,7 +950,6 @@ class Simulation:
         nearby_predators = clamp01(pred / 10.0)
         danger = clamp01(0.7 * nearby_predators + 0.3 * (1.0 - nearby_food))
 
-        # --- yeni dünya öznitelikleri ---
         terrain_code = cell.terrain.value / (len(Terrain) - 1)
         vegetation_density = cell.vegetation_density
         oxygen = cell.oxygen
@@ -1030,7 +970,7 @@ class Simulation:
             depth, water_temperature, resource_regen, available_niches,
             avg_temp, temp_variance,
         ]
-        return x_vec, (food, pop, pred)
+        return x_vec
 
     def nearest_water_dist(self, x, y, radius):
         wx, wy = self.nearest_water(x, y, radius)
@@ -1039,30 +979,30 @@ class Simulation:
         return math.hypot(wx - x, wy - y)
 
     def update_dataset_recording(self):
+        """
+        Dünya denge (stabil) durumundayken, bu ortamda başarılı olmuş
+        (olgunluğa erişmiş) rastgele canlıları örnekler.
+        X -> O anki lokal/global çevre koşulları.
+        Y -> Canlının genetik/fiziksel tasarımı.
+        """
         if not self.is_stable:
             return
 
         if self.world.tick % RECORD_INTERVAL == 0:
-            for _ in range(SAMPLES_PER_RECORD):
-                wx = random.uniform(0, WORLD_W - 1)
-                wy = random.uniform(0, WORLD_H - 1)
-                x_vec, snapshot = self.build_x_vector(wx, wy)
-                fire_tick = self.world.tick + RECORD_DELTA_TICKS
-                self.pending_samples.append((fire_tick, x_vec, snapshot, wx, wy))
+            # Hayatta olan ve olgunluğa erişmiş "başarılı" canlıları bul
+            mature_creatures = [c for c in self.creatures if c.alive and c.is_mature()]
 
-        still_pending = []
-        for (fire_tick, x_vec, snapshot, wx, wy) in self.pending_samples:
-            if self.world.tick >= fire_tick:
-                food0, pop0, pred0 = snapshot
-                food1, pop1, pred1 = self.region_counts(wx, wy, SENSE_RADIUS)
-                food_delta = clamp01((food1 - food0) / 15.0 + 0.5) * 2 - 1
-                pop_delta = clamp01((pop1 - pop0) / 8.0 + 0.5) * 2 - 1
-                pred_delta = clamp01((pred1 - pred0) / 5.0 + 0.5) * 2 - 1
-                self.x_buffer.append(x_vec)
-                self.y_buffer.append([food_delta, pop_delta, pred_delta])
-            else:
-                still_pending.append((fire_tick, x_vec, snapshot, wx, wy))
-        self.pending_samples = still_pending
+            # Aşırı örneklemeyi önlemek için sınırlandırılmış bir alt küme seç
+            sample_count = min(SAMPLES_PER_RECORD, len(mature_creatures))
+            if sample_count > 0:
+                sampled = random.sample(mature_creatures, sample_count)
+
+                for cr in sampled:
+                    x_vec = self.build_x_vector(cr.x, cr.y)
+                    y_vec = cr.genome.to_y_vector()
+
+                    self.x_buffer.append(x_vec)
+                    self.y_buffer.append(y_vec)
 
         if len(self.x_buffer) >= FLUSH_EVERY_SAMPLES:
             self.flush_dataset()
@@ -1144,24 +1084,20 @@ def draw_creature(surf, cr: Creature, cam_x, cam_y):
         pygame.draw.ellipse(surf, color, (x - radius, y - radius * 0.7, radius * 2, radius * 1.4))
     else:
         pygame.draw.circle(surf, color, (int(x), int(y)), radius)
-        # bacaklar: genomdaki sabit açısal konumlardan çizilir (gövdeye bağlı)
         for angle in g.leg_positions:
             rad = math.radians(angle)
             lx = x + math.cos(rad) * (radius + 4)
             ly = y + math.sin(rad) * (radius + 4)
             pygame.draw.line(surf, color, (x, y), (lx, ly), 2)
 
-    # gözler: genomdaki (açı, yarıçap oranı) konumlarından, gövdenin üstünde küçük noktalar
     for angle, dist_ratio in g.eye_positions:
-        rad = math.radians(angle - 90)  # -90: "ileri" yönü yukarı kabul et
+        rad = math.radians(angle - 90)
         ex = x + math.cos(rad) * radius * dist_ratio
         ey = y + math.sin(rad) * radius * dist_ratio
         pygame.draw.circle(surf, (255, 255, 255), (int(ex), int(ey)), 2)
         pygame.draw.circle(surf, (10, 10, 10), (int(ex), int(ey)), 1)
 
     pygame.draw.circle(surf, outline, (int(x), int(y)), radius, 2)
-
-    # zırhı olan canlılarda ince ikinci bir dış halka
     if g.armor > 0.35:
         pygame.draw.circle(surf, (200, 200, 210), (int(x), int(y)), radius + 3, 1)
 
@@ -1193,7 +1129,6 @@ def run_headless():
                     f"[tick {w.tick}] pop={len(sim.creatures)} "
                     f"stabil={sim.is_stable} ({sim.stable_windows}/{EQ_HISTORY_LEN}) "
                     f"kayıtlı_örnek={sim.total_saved + len(sim.x_buffer)} "
-                    f"bekleyen={len(sim.pending_samples)} "
                     f"kirlilik={w.average_pollution:.4f}"
                 )
                 last_report = now
@@ -1262,12 +1197,14 @@ def run_experiment():
         for cr in sim.creatures:
             draw_creature(screen, cr, cam_x, cam_y)
 
-        # HUD
+        # Aktif tür sayısını HUD için hesapla
+        active_species = len(set(cr.genome.species_id for cr in sim.creatures if cr.alive))
         season_name = SEASONS[sim.world.season_index()]
+
         hud_lines = [
             f"Tick: {sim.world.tick}   Mevsim: {season_name}   Işık: {sim.world.light():.2f}",
             f"Popülasyon: {len(sim.creatures)}   Yumurta: {len(sim.eggs)}   Toplam yiyecek: {sum(c.plants for row in sim.world.grid for c in row)}",
-            f"Kayıtlı örnek sayısı: {sim.total_saved + len(sim.x_buffer)}   Bekleyen: {len(sim.pending_samples)}",
+            f"Aktif Tür Sayısı: {active_species}   Kayıtlı örnek sayısı: {sim.total_saved + len(sim.x_buffer)}",
             f"Ort. kirlilik: {sim.world.average_pollution:.4f}   Boş niş: {sim.world.available_niches:.2f}",
             f"Turbo: {'AÇIK' if turbo else 'KAPALI'} (SPACE)   Elle kaydet: S   Sıfırla: R   Çıkış: ESC",
         ]
@@ -1275,7 +1212,7 @@ def run_experiment():
             txt = font.render(line, True, (255, 255, 255))
             screen.blit(txt, (14, 10 + i * 22))
 
-        status_text = "DENGE BULUNDU - VERİ KAYDI AÇIK" if sim.is_stable else f"DENGE BEKLENİYOR... ({sim.stable_windows}/{EQ_HISTORY_LEN})"
+        status_text = "DENGE BULUNDU - AI TASARIM VERİSİ TOPLANIYOR" if sim.is_stable else f"DENGE BEKLENİYOR... ({sim.stable_windows}/{EQ_HISTORY_LEN})"
         status_color = (90, 230, 120) if sim.is_stable else (230, 200, 90)
         status_surf = big_font.render(status_text, True, status_color)
         screen.blit(status_surf, (14, screen_h - 40))
@@ -1285,11 +1222,7 @@ def run_experiment():
     pygame.quit()
 
 
-# =====================================================================
-# MAIN
-# =====================================================================
 def main():
-    # komut satırından da mod seçilebilir: python ecosystem_sim.py --headless / --experiment
     arg = sys.argv[1].lower() if len(sys.argv) > 1 else ""
     if arg in ("--headless", "-h", "veri", "1"):
         run_headless()
