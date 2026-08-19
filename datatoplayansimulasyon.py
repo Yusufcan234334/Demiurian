@@ -887,16 +887,26 @@ class Simulation:
             food_mean, food_cv = get_cv(self.food_history)
             species_mean, species_cv = get_cv(self.species_history)
 
-            # Dengeli kabul edilmesi için üç metriğin de değişimi (varyasyon katsayısı) eşiğin altında olmalı
-            if (pop_mean > 5 and pop_cv < EQ_CV_THRESHOLD and
-                    food_cv < EQ_CV_THRESHOLD and species_cv < EQ_CV_THRESHOLD):
+            # Toleransları mevsim ve mutasyonlara dayanıklı hale getirdik:
+            is_window_stable = (
+                    pop_mean > 5 and
+                    pop_cv < 0.25 and  # Popülasyon değişimi %25'e kadar normal
+                    food_cv < 0.40 and  # Mevsim geçişlerinde yiyecek çok değişir (%40)
+                    species_cv < 0.45  # Yeni tür mutasyonları anlık dalgalanma yapar
+            )
+
+            if is_window_stable:
                 self.stable_windows += 1
             else:
-                self.stable_windows = 0
-                self.is_stable = False  # Koşullar bozulduğunda stabiliteyi iptal et
+                # Denge bozulduğunda hemen 0'a düşürmek yerine yavaşça düşür (kış mevsimini tolere etsin)
+                self.stable_windows = max(0, self.stable_windows - 2)
 
+            # Sayacımız yeterli hedefe ulaştıysa kayda başla
             if self.stable_windows >= EQ_HISTORY_LEN:
                 self.is_stable = True
+            # Ancak işler çok kötü gider ve sayaç yarıya kadar düşerse kaydı durdur
+            elif self.stable_windows < EQ_HISTORY_LEN // 2:
+                self.is_stable = False
 
     def update_available_niches(self):
         if not self.creatures:
@@ -1015,11 +1025,26 @@ class Simulation:
         new_y = torch.tensor(self.y_buffer, dtype=torch.float32)
 
         if os.path.exists(X_PATH):
-            old_x = torch.load(X_PATH)
-            new_x = torch.cat([old_x, new_x], dim=0)
+            try:
+                old_x = torch.load(X_PATH)
+                # Boyutlar uyuşuyorsa birleştir, uyuşmuyorsa uyarı verip yenisinin üzerine yaz
+                if len(old_x.shape) > 1 and old_x.shape[1] == new_x.shape[1]:
+                    new_x = torch.cat([old_x, new_x], dim=0)
+                else:
+                    print(
+                        f"\n[Uyarı] Eski X verisi boyutu ({old_x.shape[1]}) yeni veriyle ({new_x.shape[1]}) uyuşmuyor! Eski veriler sıfırlandı.")
+            except:
+                pass
+
         if os.path.exists(Y_PATH):
-            old_y = torch.load(Y_PATH)
-            new_y = torch.cat([old_y, new_y], dim=0)
+            try:
+                old_y = torch.load(Y_PATH)
+                if len(old_y.shape) > 1 and old_y.shape[1] == new_y.shape[1]:
+                    new_y = torch.cat([old_y, new_y], dim=0)
+                else:
+                    print(f"\n[Uyarı] Eski Y verisi boyutu uyuşmuyor! Eski veriler sıfırlandı.")
+            except:
+                pass
 
         torch.save(new_x, X_PATH)
         torch.save(new_y, Y_PATH)
