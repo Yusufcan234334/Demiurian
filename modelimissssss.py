@@ -145,9 +145,7 @@ def wakywakyitstimeforval(model, debug=True):
 
 #bu fonksiyon AI
 def test_creation(model):
-    print("\n" + "=" * 50)
-    print("--- TANRI AI TASARIM TESTİ ---")
-    print("=" * 50)
+    print("test:")
 
     model.eval()
 
